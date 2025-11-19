@@ -1,0 +1,439 @@
+Good — I’ll expand everything into **clear, copy-paste lab steps** (UI clicks + exact terminal commands + what to type into fields) for the Jenkins **build → test → copy artifacts → build other projects → deploy** flow, for both **Freestyle jobs** and **Declarative pipeline**. I’ll also include Tomcat manager setup, credentials, and pipeline examples that trigger downstream jobs or copy artifacts. I’ll reference the week PDFs where appropriate. Ready? Let’s go.
+
+---
+
+# WEEK 8 (Jenkins + Maven) — detailed lab-ready steps
+
+(Reference: Week 8 PDF). 
+
+## A. Prereqs — quick verification (terminal)
+
+1. Java:
+
+```bash
+java -version
+```
+
+2. Maven:
+
+```bash
+mvn -version
+```
+
+If missing, follow earlier install steps in the Week 8 PDF. 
+
+---
+
+## B. Jenkins basics — start Jenkins (local)
+
+**If `jenkins.war` present:**
+
+```bash
+java -jar jenkins.war
+# Then open http://localhost:8080
+```
+
+(Use the `initialAdminPassword` file shown on the first-run console to unlock UI.) 
+
+---
+
+## C. Configure global tools & creds in Jenkins (UI steps — do these first)
+
+1. Open Jenkins → **Manage Jenkins** → **Global Tool Configuration**.
+
+   * Under **JDK**: (if needed) Add JDK installation or ensure system `java` is available.
+   * Under **Maven**: Click **Add Maven** → **Name:** `MAVEN_HOME` → **Maven home** (or leave blank if auto-install) → **Apply** → **Save**.
+   * Under **Git**: ensure Git installation is available.
+
+2. Add credentials:
+
+   * Jenkins → **Credentials** → (Global) → **Add Credentials**.
+
+     * For Git: Kind = **Username with password** (or **SSH Username with private key** if using SSH).
+     * For Tomcat manager (used for deploy): create Username/Password credential (e.g., user `tomcatadmin`, pass `yourpass`).
+   * Note the credential IDs (you can use the description to remember them).
+
+(Week 8 instructs adding MAVEN_HOME and basic Jenkins config.) 
+
+---
+
+## D. Freestyle job flow — FULL precise steps
+
+### 1) Create **MavenJava_Build** (Freestyle)
+
+Jenkins → **New Item** → name: `MavenJava_Build` → **Freestyle project** → **OK**
+
+**Configure:**
+
+* **Description:** `Java Build demo`
+* **Source Code Management** → **Git**
+
+  * Repository URL: `https://github.com/bhavagna06/Maven.git`
+  * Credentials: select credential (or leave blank if public)
+  * Branch Specifier: `*/main` (or `*/master`)
+* **Build Environment**: (optionally) select *Delete workspace before build starts* if you want a fresh clone each time.
+* **Build** → **Add build step** → choose:
+
+  * On Linux nodes: **Execute shell** step with:
+
+    ```bash
+    mvn clean -DskipTests
+    mvn install
+    ```
+
+    (You can split into two separate build steps if you want clearer logs.)
+  * On Windows nodes: **Execute Windows batch command**:
+
+    ```bat
+    mvn clean -DskipTests
+    mvn install
+    ```
+
+**Post-build Actions:**
+
+* **Archive the artifacts** → **Files to archive:** `**/*` (or `target/*.jar` or `target/*.war` to be precise)
+* **Build other projects** → **Projects to build:** `MavenJava_Test`
+
+  * Tick **Trigger only if build is stable** (this ensures downstream runs only on success)
+
+**Save**.
+
+> Why this exact flow: `clean` removes old artifacts; `install` builds and places artifacts in `target/` which we archive then pass to tests.
+
+(Week 8 shows these steps; this is full explicit config.) 
+
+---
+
+### 2) Create **MavenJava_Test** (Freestyle)
+
+Jenkins → **New Item** → name: `MavenJava_Test` → **Freestyle project** → **OK**
+
+**Configure:**
+
+* **Description:** `Test demo`
+* **Build Environment:** **Check** `Delete workspace before build starts` (ensures clean workspace)
+* **Build** → **Add build step** → **Copy artifacts from another project**
+
+  * **Project name:** `MavenJava_Build`
+  * **Which build:** `Latest successful build` (or **Stable build only** depending on plugin options)
+  * **Artifacts to copy:** `**/*` (or `target/*.war`)
+* **Build** → **Add build step** → **Invoke top-level Maven targets** (or Execute shell):
+
+  * `mvn test`
+* **Post-build Actions:** **Archive the artifacts** → `**/*`
+
+**Save**.
+
+> Note: *Copy artifacts from another project* requires the **Copy Artifact plugin**. Install via Manage Jenkins → Manage Plugins if missing.
+
+(Week 8 mentions copying artifacts and test job config.) 
+
+---
+
+### 3) Create **Pipeline view** for visualization
+
+Dashboard → Click **+** (beside "All") → **Build Pipeline View** → Name: `Java_Pipeline` → Initial job: `MavenJava_Build` → Save.
+
+Run `MavenJava_Build` manually or configure triggers (below) to see pipeline flow.
+
+---
+
+## E. Build triggers (automatic runs)
+
+* Inside **MavenJava_Build** → **Build Triggers**:
+
+  * To trigger on GitHub change: check **GitHub hook trigger for GITScm polling** (also configure webhook on GitHub repo pointing to `http://<jenkins-host>/github-webhook/`).
+  * For scheduled builds: check **Build periodically** and add cron e.g., `H 18 * * *` (runs daily at ~6pm).
+
+(Week 9 mentions triggers and pipeline job creation.) 
+
+---
+
+## F. Tomcat deploy (Freestyle downstream job example)
+
+Create a downstream Freestyle job `MavenWeb_Deploy`.
+
+**Configure:**
+
+* **Description:** `Web Code Deployment`
+* **Build Environment:** Check `Delete the workspace before build starts`
+* **Build Steps:** **Copy artifacts from another project** → from `MavenWeb_Test` → Artifacts: `**/*.war`
+* **Post-build Actions:** **Deploy WAR/EAR to a container**
+
+  * **WAR/EAR File:** `**/*.war`
+  * **Context path:** `/webpath` (or root `/`)
+  * **Container:** Add Tomcat 9.x remote
+
+    * **URL:** `http://<tomcat-host>:8080/manager/text` (or `http://localhost:8080/manager/text` if local)
+    * **Credentials:** select the Tomcat manager credential you added earlier
+* **Save**
+
+> Important: on the Tomcat server you must add a manager user with `manager-script` role in `tomcat-users.xml`. Example entry (on the Tomcat server):
+
+```xml
+<role rolename="manager-gui"/>
+<role rolename="manager-script"/>
+<user username="tomcatadmin" password="yourpass" roles="manager-gui,manager-script"/>
+```
+
+Restart Tomcat after editing. Then provide same credentials in Jenkins credentials. (Week 8 shows deployment to Tomcat.) 
+
+---
+
+## G. How “Build other projects” works (exact UI flow)
+
+* In your upstream job (`MavenJava_Build`) go to **Post-build Actions** → **Build other projects**.
+
+  * **Projects to build:** `MavenJava_Test` (or comma-separated list for many)
+  * **Trigger when build is:** choose `Stable` or `Unstable` as needed
+  * Save.
+
+When `MavenJava_Build` finishes successfully (stable), Jenkins will place that build in queue to start `MavenJava_Test`. The copied artifacts come from the upstream build if you set `Copy artifacts` in the downstream job.
+
+---
+
+## H. Troubleshooting tips (common mistakes)
+
+* If `Maven` not found in Jenkins logs: confirm `MAVEN_HOME` name exactly matches `tools { maven 'MAVEN_HOME' }` in pipeline or the "Maven installations" name in Global Tool Configuration. 
+* If copy artifact fails: ensure **Copy Artifact plugin** installed and the artifact path matches what `archiveArtifacts` stored.
+* If Tomcat deploy fails with 401: check Tomcat `tomcat-users.xml` roles and credentials configured in Jenkins.
+
+---
+
+# WEEK 9 — Scripted/Declarative Pipeline — full examples & how to trigger downstream jobs
+
+(Reference: Week 9 PDF). 
+
+## A. Basic declarative Pipeline (Windows `bat` shown in Week 9)
+
+**Pipeline** → paste this script into the pipeline job:
+
+```groovy
+pipeline {
+  agent any
+  tools {
+    maven 'MAVEN-HOME'
+  }
+  stages {
+    stage('git repo & clean') {
+      steps {
+        bat 'rmdir /s /q mavenjava || true'
+        bat 'git clone https://github.com/your-org/your-repo.git mavenjava'
+        bat 'mvn -f mavenjava clean'
+      }
+    }
+    stage('install') {
+      steps {
+        bat 'mvn -f mavenjava install -DskipTests=false'
+      }
+    }
+    stage('test') {
+      steps {
+        bat 'mvn -f mavenjava test'
+      }
+    }
+    stage('package') {
+      steps {
+        bat 'mvn -f mavenjava package'
+      }
+    }
+  }
+  post {
+    success {
+      echo "Pipeline succeeded: ${env.BUILD_NUMBER}"
+      archiveArtifacts artifacts: 'mavenjava/target/*.war', fingerprint: true
+      // Optionally trigger downstream freestyle:
+      build job: 'MavenWeb_Deploy', wait: false
+    }
+  }
+}
+```
+
+**Notes:**
+
+* Replace `https://github...` with your repo.
+* `archiveArtifacts` stores artifacts in this pipeline build for later copy by other jobs (or you can stash).
+* To ensure downstream jobs only run on success, trigger them in `post { success { ... } }` or use conditional `when`.
+
+(Week 9 contains a similar script; I expanded it with archive and `build job:` usage.) 
+
+---
+
+## B. Passing artifacts from pipeline to freestyle downstream (two approaches)
+
+### Option 1 — Use `archiveArtifacts` + Freestyle `Copy artifacts` plugin
+
+* In pipeline: `archiveArtifacts artifacts: 'mavenjava/target/*.war', fingerprint: true`
+* Downstream freestyle job: **Copy artifacts from another project** → project: `YourPipelineJob` → **Which build:** `Specific build` or `Latest successful build` → **Artifacts to copy**: `mavenjava/target/*.war`
+
+### Option 2 — Use `stash`/`unstash` within a multi-stage pipeline
+
+If both build/test/package are in the same pipeline, stash after package and unstash in other parallel stages:
+
+```groovy
+stage('package') {
+  steps {
+    sh 'mvn -f mavenjava package'
+    stash includes: 'mavenjava/target/*.war', name: 'appwar'
+  }
+}
+stage('deploy') {
+  steps {
+    unstash 'appwar'
+    sh 'ls -la'
+    // docker build/run or scp to server
+  }
+}
+```
+
+**Recommendation:** Use `stash/unstash` when everything lives in single pipeline. Use `archiveArtifacts` + `copy artifacts` when chaining freestyle jobs.
+
+---
+
+## C. Make `test` failures stop pipeline
+
+To make `mvn test` fail the pipeline (stop later stages), don’t add `|| true` and ensure you don’t wrap it in a try/catch. In declarative pipeline `error` will fail the build. Example:
+
+```groovy
+stage('test') {
+  steps {
+    bat 'mvn -f mavenjava test'
+  }
+}
+```
+
+If tests fail, pipeline fails and following stages won’t run by default.
+
+(Week 9 SBQs mention test behavior; included here.) 
+
+---
+
+# WEEK 10 — Minikube & Nagios — full CLI + Jenkins integration notes
+
+(Reference: Week 10 PDF). 
+
+**Minikube quick commands**
+
+```bash
+# Download (Linux example)
+curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+
+# Start minikube
+minikube start
+
+# Create deployment
+kubectl create deployment mynginx --image=nginx
+
+# Scale
+kubectl scale deployment mynginx --replicas=3
+
+# Expose via port-forward
+kubectl port-forward svc/mynginx 8081:80
+
+# Check pods
+kubectl get pods
+kubectl describe pod <pod-name>
+kubectl logs <pod-name>
+```
+
+**Nagios Docker**
+
+```bash
+docker pull jasonrivers/nagios:latest
+docker run --name nagiosdemo -p 8888:80 jasonrivers/nagios:latest
+# Access: http://<host>:8888
+docker logs -f nagiosdemo
+docker stop nagiosdemo
+docker rm nagiosdemo
+```
+
+**How this ties to Jenkins pipeline:** you can add stages to your pipeline to run `kubectl` commands or `docker` commands — ensure the Jenkins agent has `kubectl`/`docker` and permissions. Use `sh`/`bat` steps to execute above commands. 
+
+---
+
+# WEEK 12 — EC2 + Docker deploy — full terminal steps and Jenkins tie-in
+
+(Reference: Week 12 PDF). 
+
+## A. EC2 SSH, install Docker, clone repo (commands)
+
+```bash
+# On your workstation - make key read-only
+chmod 400 yourkey.pem
+
+# SSH into instance (from AWS console copy)
+ssh -i yourkey.pem ubuntu@<EC2_PUBLIC_IP>
+
+# On the EC2 (Ubuntu) instance:
+sudo apt update -y
+sudo apt install -y docker.io git nano openjdk-17-jdk maven
+sudo usermod -aG docker ubuntu   # allow ubuntu to run docker without sudo (log out/in)
+```
+
+## B. Clone and build & create Docker image
+
+```bash
+git clone https://github.com/your-org/maven-web-java.git
+cd maven-web-java
+mvn clean package              # creates target/*.war
+# Create Dockerfile (example)
+cat > Dockerfile <<'EOF'
+
+FROM tomcat:9-jdk17
+COPY target/*.war /usr/local/tomcat/webapps/ROOT.war
+EOF
+# Build image
+docker build -t appimage .
+# Run container mapping host port 6060 -> container 8080
+docker run -d --name app-demo -p 6060:8080 appimage
+```
+
+Open `http://<EC2_PUBLIC_IP>:6060` in browser. If not accessible, add inbound rule in EC2 Security Group for port 6060 (custom TCP) and/or 8080.
+
+(Week 12 lists these steps; here they are exact commands.) 
+
+---
+
+## C. Jenkins pipeline to deploy to EC2 (example using SSH)
+
+* Install **Publish Over SSH** plugin (or use `ssh` in pipeline with credentials).
+* Add SSH host in Jenkins config with IP, username `ubuntu`, key (or use credentials).
+* Pipeline stage example (uses `sshagent` or `ssh` command via `sh`):
+
+```groovy
+stage('deploy to EC2') {
+  steps {
+    sshagent (credentials: ['ec2-ssh-cred-id']) {
+      sh "scp -o StrictHostKeyChecking=no docker-compose.yml ubuntu@<EC2_PUBLIC_IP>:/home/ubuntu/"
+      sh "ssh -o StrictHostKeyChecking=no ubuntu@<EC2_PUBLIC_IP> 'cd /home/ubuntu && docker-compose up -d --build'"
+    }
+  }
+}
+```
+
+Alternatively use `docker` login/registry and `docker pull` on EC2.
+
+(Week 12 mentions EC2 deploy process — pipeline integration added here.) 
+
+---
+
+# Quick summary checklist you can copy into lab manual
+
+1. Install Java & Maven; configure `MAVEN_HOME`. 
+2. Install and run Jenkins; configure Global Tools & Credentials. 
+3. Create `MavenJava_Build` (Freestyle): clone, `mvn clean` → `mvn install`, archive artifacts, post-build → Build other projects `MavenJava_Test`. 
+4. Create `MavenJava_Test` (Freestyle): copy artifacts from `MavenJava_Build`, `mvn test`, archive. 
+5. Create `MavenWeb_Build` / `MavenWeb_Test` / `MavenWeb_Deploy` similarly for web app; deploy WAR to Tomcat (Tomcat user must have `manager-script`).
+6. Scripted/Declarative pipeline: clone, `mvn clean install test package`, `archiveArtifacts`, optionally `build job:` downstream, or `stash/unstash`. 
+7. Minikube & Nagios commands for Week 10; Docker commands for Nagios. 
+8. EC2 steps: set key permissions, ssh, install docker/git/maven, clone, build, create Dockerfile, build & run container. 
+
+---
+
+If you want, I’ll now:
+
+* generate **one** printable lab manual page per week with step-by-step commands and screenshots locations, or
+* produce fully-filled **Jenkinsfile** examples for *both* Windows (`bat`) and Linux (`sh`) with downstream triggers and artifact passing, or
+* produce a **single combined pipeline** that builds, tests, copies artifacts, creates Docker image, and deploys to EC2.
+
+Tell me which of those three you want **now** and I’ll output it immediately (full copy-paste ready).
