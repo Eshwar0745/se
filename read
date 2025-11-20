@@ -580,7 +580,46 @@ Nagios → Hosts
 Nagios → Services
 ```
 
----
+---  own image
+curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+minikube start
+
+# connect docker to minikube
+& minikube -p minikube docker-env | Invoke-Expression
+
+# build your image from your git repo
+git clone https://github.com/Eshwar0745/xes
+cd xes
+docker build -t xes:v1 .
+
+# deploy your custom app
+kubectl create deployment xes --image=xes:v1
+
+# scale replicas
+kubectl scale deployment xes --replicas=3
+
+# expose your app on port 8080
+kubectl expose deployment xes --type=NodePort --port=8080 --target-port=8080
+
+# port-forward (optional)
+kubectl port-forward svc/xes 8081:8080
+
+# nagios (unchanged)
+docker pull jasonrivers/nagios:latest
+docker run --name nagiosdemo -p 8888:80 jasonrivers/nagios:latest
+docker stop nagiosdemo
+docker rm nagiosdemo
+
+# debugging
+kubectl get deployment xes
+kubectl describe deployment xes
+kubectl logs <xes-pod-name>
+kubectl rollout undo deployment/xes
+docker ps
+ps -ef | grep nagios
+nagios -v /usr/local/nagios/etc/nagios.cfg
+docker logs -f nagiosdemo
+
 
 
 
