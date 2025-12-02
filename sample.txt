@@ -1,439 +1,1269 @@
-Good — I’ll expand everything into **clear, copy-paste lab steps** (UI clicks + exact terminal commands + what to type into fields) for the Jenkins **build → test → copy artifacts → build other projects → deploy** flow, for both **Freestyle jobs** and **Declarative pipeline**. I’ll also include Tomcat manager setup, credentials, and pipeline examples that trigger downstream jobs or copy artifacts. I’ll reference the week PDFs where appropriate. Ready? Let’s go.
 
----
 
-# WEEK 8 (Jenkins + Maven) — detailed lab-ready steps
+# ✅ **2. Exploring Git Local & Remote Commands (Multi-Folder Project)**
 
-(Reference: Week 8 PDF). 
+*(All essential steps + commands, no extra words)*
 
-## A. Prereqs — quick verification (terminal)
-
-1. Java:
+### **1. Create Git Repo Locally**
 
 ```bash
-java -version
+git init
+git add .
+git commit -m "first commit"
 ```
 
-2. Maven:
+### **2. Add Remote Repo**
 
 ```bash
-mvn -version
+git remote add origin <repo-url>
+git push -u origin main
 ```
 
-If missing, follow earlier install steps in the Week 8 PDF. 
 
----
 
-## B. Jenkins basics — start Jenkins (local)
-
-**If `jenkins.war` present:**
+### **3. Basic Useful Commands**
 
 ```bash
-java -jar jenkins.war
-# Then open http://localhost:8080
+git status
+git add <file>
+git commit -m "msg"
+git push
+git pull
+git log
 ```
 
-(Use the `initialAdminPassword` file shown on the first-run console to unlock UI.) 
+### **4. Multi-folder Push (same steps)**
+
+Just ensure you are at project root:
+
+```bash
+cd project-folder
+git add .
+git commit -m "update"
+git push
+```
+
+### **5. Handling Errors (non-fast-forward)**
+
+```bash
+git pull --rebase origin main
+git push
+```
+
+
+
+### **6. Switch / Create Branches**
+
+```bash
+git checkout -b feature1
+git push origin feature1
+```
+
+
+
+### **7. Discard / Unstage Changes**
+
+```bash
+git restore <file>
+git reset HEAD <file>
+```
+
+
+
+### **8. Bring Local Repo Up to Date**
+
+```bash
+git fetch origin
+git pull --rebase origin main
+```
+
+
 
 ---
 
-## C. Configure global tools & creds in Jenkins (UI steps — do these first)
+# ✅ **3. Collaborative Coding Using GitHub (Organization + Conflicts + Patch)**
 
-1. Open Jenkins → **Manage Jenkins** → **Global Tool Configuration**.
+*(Everything minimal but complete)*
 
-   * Under **JDK**: (if needed) Add JDK installation or ensure system `java` is available.
-   * Under **Maven**: Click **Add Maven** → **Name:** `MAVEN_HOME` → **Maven home** (or leave blank if auto-install) → **Apply** → **Save**.
-   * Under **Git**: ensure Git installation is available.
+### **1. Create Organization + Shared Repo**
 
-2. Add credentials:
+GitHub → **New Organization**
+Add members → Create shared repo.
 
-   * Jenkins → **Credentials** → (Global) → **Add Credentials**.
-
-     * For Git: Kind = **Username with password** (or **SSH Username with private key** if using SSH).
-     * For Tomcat manager (used for deploy): create Username/Password credential (e.g., user `tomcatadmin`, pass `yourpass`).
-   * Note the credential IDs (you can use the description to remember them).
-
-(Week 8 instructs adding MAVEN_HOME and basic Jenkins config.) 
 
 ---
 
-## D. Freestyle job flow — FULL precise steps
+### **2. Clone Repo**
 
-### 1) Create **MavenJava_Build** (Freestyle)
+```bash
+git clone <repo-url>
+cd repo
+```
 
-Jenkins → **New Item** → name: `MavenJava_Build` → **Freestyle project** → **OK**
 
-**Configure:**
-
-* **Description:** `Java Build demo`
-* **Source Code Management** → **Git**
-
-  * Repository URL: `https://github.com/bhavagna06/Maven.git`
-  * Credentials: select credential (or leave blank if public)
-  * Branch Specifier: `*/main` (or `*/master`)
-* **Build Environment**: (optionally) select *Delete workspace before build starts* if you want a fresh clone each time.
-* **Build** → **Add build step** → choose:
-
-  * On Linux nodes: **Execute shell** step with:
-
-    ```bash
-    mvn clean -DskipTests
-    mvn install
-    ```
-
-    (You can split into two separate build steps if you want clearer logs.)
-  * On Windows nodes: **Execute Windows batch command**:
-
-    ```bat
-    mvn clean -DskipTests
-    mvn install
-    ```
-
-**Post-build Actions:**
-
-* **Archive the artifacts** → **Files to archive:** `**/*` (or `target/*.jar` or `target/*.war` to be precise)
-* **Build other projects** → **Projects to build:** `MavenJava_Test`
-
-  * Tick **Trigger only if build is stable** (this ensures downstream runs only on success)
-
-**Save**.
-
-> Why this exact flow: `clean` removes old artifacts; `install` builds and places artifacts in `target/` which we archive then pass to tests.
-
-(Week 8 shows these steps; this is full explicit config.) 
 
 ---
 
-### 2) Create **MavenJava_Test** (Freestyle)
+### **3. Create Feature Branch**
 
-Jenkins → **New Item** → name: `MavenJava_Test` → **Freestyle project** → **OK**
+```bash
+git checkout -b feature/login
+```
 
-**Configure:**
 
-* **Description:** `Test demo`
-* **Build Environment:** **Check** `Delete workspace before build starts` (ensures clean workspace)
-* **Build** → **Add build step** → **Copy artifacts from another project**
-
-  * **Project name:** `MavenJava_Build`
-  * **Which build:** `Latest successful build` (or **Stable build only** depending on plugin options)
-  * **Artifacts to copy:** `**/*` (or `target/*.war`)
-* **Build** → **Add build step** → **Invoke top-level Maven targets** (or Execute shell):
-
-  * `mvn test`
-* **Post-build Actions:** **Archive the artifacts** → `**/*`
-
-**Save**.
-
-> Note: *Copy artifacts from another project* requires the **Copy Artifact plugin**. Install via Manage Jenkins → Manage Plugins if missing.
-
-(Week 8 mentions copying artifacts and test job config.) 
 
 ---
 
-### 3) Create **Pipeline view** for visualization
+### **4. Make Changes + Commit**
 
-Dashboard → Click **+** (beside "All") → **Build Pipeline View** → Name: `Java_Pipeline` → Initial job: `MavenJava_Build` → Save.
+```bash
+git add .
+git commit -m "added login page"
+git push origin feature/login
+```
 
-Run `MavenJava_Build` manually or configure triggers (below) to see pipeline flow.
 
----
-
-## E. Build triggers (automatic runs)
-
-* Inside **MavenJava_Build** → **Build Triggers**:
-
-  * To trigger on GitHub change: check **GitHub hook trigger for GITScm polling** (also configure webhook on GitHub repo pointing to `http://<jenkins-host>/github-webhook/`).
-  * For scheduled builds: check **Build periodically** and add cron e.g., `H 18 * * *` (runs daily at ~6pm).
-
-(Week 9 mentions triggers and pipeline job creation.) 
 
 ---
 
-## F. Tomcat deploy (Freestyle downstream job example)
+### **5. Create Pull Request**
 
-Create a downstream Freestyle job `MavenWeb_Deploy`.
+GitHub → Repo → **Compare & Pull Request** → Submit.
 
-**Configure:**
+---
 
-* **Description:** `Web Code Deployment`
-* **Build Environment:** Check `Delete the workspace before build starts`
-* **Build Steps:** **Copy artifacts from another project** → from `MavenWeb_Test` → Artifacts: `**/*.war`
-* **Post-build Actions:** **Deploy WAR/EAR to a container**
+### **6. Resolve Merge Conflicts (if any)**
 
-  * **WAR/EAR File:** `**/*.war`
-  * **Context path:** `/webpath` (or root `/`)
-  * **Container:** Add Tomcat 9.x remote
+```bash
+git pull origin main
+# fix conflict manually
+git add .
+git commit
+git push
+```
 
-    * **URL:** `http://<tomcat-host>:8080/manager/text` (or `http://localhost:8080/manager/text` if local)
-    * **Credentials:** select the Tomcat manager credential you added earlier
-* **Save**
 
-> Important: on the Tomcat server you must add a manager user with `manager-script` role in `tomcat-users.xml`. Example entry (on the Tomcat server):
+
+---
+
+### **7. Apply Patch (if needed)**
+
+Generate patch:
+
+```bash
+git diff > fix.patch
+```
+
+Apply patch:
+
+```bash
+git apply fix.patch
+```
+Got you — here is **4. Build & Package Java + Web Apps using Maven** in the same **super-short, crisp, complete** format.
+
+---
+
+# ✅ **4. Build & Package Java and Web Applications Using Maven (Ultra-Short Steps)**
+
+*(All steps from your record + required commands)*
+
+---
+
+# **A) Create Maven (Java) Project**
+
+### **1. In Eclipse**
+
+File → New → **Maven Project**
+Select workspace → Next
+Choose archetype:
+
+```
+maven-archetype-quickstart
+```
+
+Enter:
+
+* **Group Id**
+* **Artifact Id**
+  → Finish
+
+
+---
+
+### **2. Write Code**
+
+Open:
+
+```
+src/main/java/.../App.java
+```
+
+Add your Java logic.
+
+
+---
+
+### **3. Build (compile + package)**
+
+From terminal in project root:
+
+```bash
+mvn clean install
+```
+
+If success → `BUILD SUCCESS`
+
+
+---
+
+### **4. Output**
+
+Jar/WAR generated in:
+
+```
+target/
+```
+
+---
+
+# **B) Push to GitHub**
+
+Right-click project → Show in Git Bash
+Run:
+
+```bash
+git init
+git add .
+git commit -m "first commit"
+git remote add origin <repo-url>
+git push -u origin main
+```
+
+
+
+---
+
+# **C) Create Maven Web Project**
+
+### **1. New → Maven Project**
+
+Same as above
+Enter GroupId + ArtifactId
+Build will run → **BUILD SUCCESS**
+
+
+---
+
+### **2. Add Web Files**
+
+Create:
+
+```
+src/main/webapp/index.html
+```
+
+Write HTML content
+
+
+---
+
+### **3. Run on Server**
+
+Right-click → Run on Server
+Shows webpage output.
+
+
+---
+
+### **4. Build Web Project**
+
+```bash
+mvn clean install
+```
+
+Produces:
+
+```
+target/<project>.war
+```
+
+This WAR can be deployed to Tomcat.
+
+
+---
+
+### **5. Push Web Project to GitHub**
+
+```bash
+git add .
+git commit -m "web project"
+git push
+```
+
+
+
+---
+
+# **D) Dependency Management**
+
+Add dependencies inside `pom.xml`:
+
+Example:
 
 ```xml
-<role rolename="manager-gui"/>
-<role rolename="manager-script"/>
-<user username="tomcatadmin" password="yourpass" roles="manager-gui,manager-script"/>
+<dependency>
+    <groupId>org.springframework</groupId>
+    <artifactId>spring-core</artifactId>
+    <version>5.3.10</version>
+</dependency>
 ```
 
-Restart Tomcat after editing. Then provide same credentials in Jenkins credentials. (Week 8 shows deployment to Tomcat.) 
+Run:
+
+```bash
+mvn install
+```
+
+to resolve and download jars.
+
 
 ---
 
-## G. How “Build other projects” works (exact UI flow)
+# **E) Fix Conflicts**
 
-* In your upstream job (`MavenJava_Build`) go to **Post-build Actions** → **Build other projects**.
+If dependency mismatch:
 
-  * **Projects to build:** `MavenJava_Test` (or comma-separated list for many)
-  * **Trigger when build is:** choose `Stable` or `Unstable` as needed
-  * Save.
+* Check `pom.xml`
+* Update dependency versions
+* Run:
 
-When `MavenJava_Build` finishes successfully (stable), Jenkins will place that build in queue to start `MavenJava_Test`. The copied artifacts come from the upstream build if you set `Copy artifacts` in the downstream job.
+```bash
+mvn dependency:tree
+```
 
----
+to debug.
 
-## H. Troubleshooting tips (common mistakes)
-
-* If `Maven` not found in Jenkins logs: confirm `MAVEN_HOME` name exactly matches `tools { maven 'MAVEN_HOME' }` in pipeline or the "Maven installations" name in Global Tool Configuration. 
-* If copy artifact fails: ensure **Copy Artifact plugin** installed and the artifact path matches what `archiveArtifacts` stored.
-* If Tomcat deploy fails with 401: check Tomcat `tomcat-users.xml` roles and credentials configured in Jenkins.
 
 ---
 
-# WEEK 9 — Scripted/Declarative Pipeline — full examples & how to trigger downstream jobs
+# **F) Output Types**
 
-(Reference: Week 9 PDF). 
+* Java project → `JAR`
+* Web project → `WAR`
 
-## A. Basic declarative Pipeline (Windows `bat` shown in Week 9)
+Both appear inside `/target`.
 
-**Pipeline** → paste this script into the pipeline job:
+---
+Alright Eshwar — I’ll rewrite **5, 6, 7** with **every step clearly included**, **not too short**, **not too long**, and **simple to follow** — exactly like your AWS and Jenkins ones.
+
+Let's go.
+
+---
+
+# ✅ **5. Docker CLI Commands — Clear Full Steps**
+
+### **Step 1: Pull Ubuntu Image**
+
+```bash
+docker pull ubuntu
+```
+
+This downloads the latest Ubuntu image.
+
+
+---
+
+### **Step 2: Run a Container**
+
+```bash
+docker run -it --name myubuntu -p 3000:80 ubuntu
+```
+
+* `-it` → interactive terminal
+* `--name myubuntu` → container name
+* `-p 3000:80` → open port 3000 on host mapped to port 80 inside container
+
+
+---
+
+### **Step 3: Install Nginx Inside Container**
+
+Inside container:
+
+```bash
+apt update
+apt install nginx -y
+```
+
+This installs the Nginx web server.
+
+---
+
+### **Step 4: Edit the Homepage**
+
+```bash
+nano /var/www/html/index.html
+```
+
+Make changes → Save → Exit
+
+
+---
+
+### **Step 5: Start Nginx**
+
+```bash
+service nginx start
+```
+
+---
+
+### **Step 6: Open in Browser**
+
+Open:
+
+```
+http://localhost:3000
+```
+
+You will see your custom edited page.
+
+
+---
+
+### **Step 7: Important Docker CLI Commands**
+
+Container management:
+
+```bash
+docker ps              # Running containers
+docker ps -a           # All containers
+docker stop <id>
+docker start <id>
+docker rm <id>
+```
+
+Image management:
+
+```bash
+docker images
+docker rmi <image-name>
+```
+
+Inspect:
+
+```bash
+docker inspect <id>
+```
+
+Logs:
+
+```bash
+docker logs <container>
+```
+
+---
+
+# 🎯 **5 completed cleanly.**
+
+---
+
+# ✅ **6. Docker – Images, Dockerfile & Docker Compose (Clear Full Steps)**
+
+## **Part A — Image Creation Using Commit**
+
+### **Step 1: Start a Container**
+
+```bash
+docker run -it --name ub1 ubuntu
+```
+
+### **Step 2: Install Something (Example: nginx)**
+
+```bash
+apt update
+apt install nginx -y
+```
+
+### **Step 3: Commit Container to Create Image**
+
+```bash
+docker commit ub1 myimage:v1
+```
+
+New image created.
+
+
+---
+
+## **Part B — Image Creation Using Dockerfile**
+
+### **Step 1: Create Project Folder**
+
+```bash
+mkdir dockerproj
+cd dockerproj
+```
+
+### **Step 2: Create Dockerfile**
+
+```bash
+nano Dockerfile
+```
+
+Paste content:
+
+```dockerfile
+FROM ubuntu
+RUN apt update && apt install nginx -y
+CMD ["nginx","-g","daemon off;"]
+```
+
+
+
+### **Step 3: Build Image**
+
+```bash
+docker build -t img1 .
+```
+
+### **Step 4: Run Container**
+
+```bash
+docker run -d -p 8080:80 img1
+```
+
+### **Step 5: Verify**
+
+```bash
+docker ps
+docker images
+```
+
+---
+
+## **Part C — Docker Compose (Multiple Containers)**
+
+### **Step 1: Create docker-compose.yml**
+
+```bash
+nano docker-compose.yml
+```
+
+Add:
+
+```yaml
+services:
+  server1:
+    image: httpd
+    ports:
+      - "8001:80"
+  server2:
+    image: nginx
+    ports:
+      - "8002:80"
+```
+
+
+
+### **Step 2: Run Compose**
+
+```bash
+docker compose up -d
+```
+
+### **Step 3: Check Both Servers**
+
+```
+http://localhost:8001
+http://localhost:8002
+```
+
+---
+
+## **Part D — WordPress With MySQL (Compose Example)**
+
+### **Step 1: Write docker-compose.yml**
+
+```yaml
+services:
+  wordpress:
+    image: wordpress
+    ports:
+      - "8080:80"
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_PASSWORD: rootpass
+  db:
+    image: mysql:5.7
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+```
+
+
+
+### **Step 2: Start**
+
+```bash
+docker compose up -d
+```
+
+### **Step 3: Setup in Browser**
+
+Open:
+
+```
+http://localhost:8080
+```
+
+---
+
+# 🎯 **6 done with all steps clearly defined.**
+
+---
+
+# ✅ **7. Multi-Module Maven Project — Clear Full Steps**
+
+## **Part A — Create Parent Maven Project**
+
+### **Step 1: Open Eclipse**
+
+File → New → Maven Project → Next
+Select archetype:
+
+```
+maven-archetype-quickstart
+```
+
+Enter:
+
+* GroupId
+* ArtifactId = parent-project
+
+
+### **Step 2: Confirm Build**
+
+Console shows:
+
+```
+BUILD SUCCESS
+```
+
+
+
+---
+
+## **Part B — Create Modules**
+
+### **Step 1: Right-click Parent Project → New → Module**
+
+Add:
+
+* module1
+* module2
+
+Each module also selects:
+
+```
+maven-archetype-quickstart
+```
+
+---
+
+## **Part C — Write Code in Modules**
+
+Example:
+
+```
+module1/src/main/java/.../App.java
+module2/src/main/java/.../App.java
+```
+
+---
+
+## **Part D — Update Parent pom.xml**
+
+Open:
+
+```
+parent-project/pom.xml
+```
+
+Add:
+
+```xml
+<modules>
+    <module>module1</module>
+    <module>module2</module>
+</modules>
+```
+
+---
+
+## **Part E — Build Entire Multi-Module Project**
+
+At parent folder:
+
+```bash
+mvn clean install
+```
+
+This builds:
+
+* parent
+* module1
+* module2
+
+
+---
+
+## **Part F — Output**
+
+Each module produces its own output:
+
+```
+module1/target/
+module2/target/
+```
+
+---
+
+
+---
+
+### **8. Delete Remote Branch (after merge)**
+
+```bash
+git push origin --delete feature/login
+```
+
+
+
+
+I.	Steps for MavenJava Automation:
+Step 1: Open Jenkins (localhost:8080)
+   	 ├── Click on "New Item" (left side menu
+Step 2: Create Freestyle Project (e.g., MavenJava_Build)
+        	├── Enter project name (e.g., MavenJava_Build)
+        	├── Click "OK"
+└── Configure the project:
+            		├── Description: "Java Build demo"
+            		├── Source Code Management:
+            			└── Git repository URL: [GitMavenJava repo URL]
+            		├── Branches to build: */Main   or  */master
+  		└── Build Steps:
+               	     ├── Add Build Step -> "Invoke top-level Maven targets"
+                  		└── Maven version: MAVEN_HOME
+                 		└── Goals: clean
+                	├── Add Build Step -> "Invoke top-level Maven targets"
+                		└── Maven version: MAVEN_HOME
+                		└── Goals: install
+                	└── Post-build Actions:
+                    	       ├── Add Post Build Action -> "Archive the artifacts"
+                    			└── Files to archive: **/*
+                    	     ├── Add Post Build Action -> "Build other projects"
+                    			└── Projects to build: MavenJava_Test
+                    			└── Trigger: Only if build is stable
+                    	     └── Apply and Save
+
+└── Step 3: Create Freestyle Project (e.g., MavenJava_Test)
+        	├── Enter project name (e.g., MavenJava_Test)
+        	├── Click "OK"
+              └── Configure the project:
+             ├── Description: "Test demo"
+             ├── Build Environment:
+            		└── Check: "Delete the workspace before build starts"
+            ├── Add Build Step -> "Copy artifacts from another project"
+            		└── Project name: MavenJava_Build
+            		└── Build: Stable build only  // tick at this
+            		└── Artifacts to copy: **/*
+            ├── Add Build Step -> "Invoke top-level Maven targets"
+            		└── Maven version: MAVEN_HOME
+            		└── Goals: test
+            		└── Post-build Actions:
+                ├── Add Post Build Action -> "Archive the artifacts"
+                	└── Files to archive: **/*
+                	└── Apply and Save
+
+└── Step 4: Create Pipeline View for Maven Java project
+        ├── Click "+" beside "All" on the dashboard
+        ├── Enter name: MavenJava_Pipeline
+        ├── Select "Build pipeline view"         // tick here
+         |--- create
+        └── Pipeline Flow:
+            ├── Layout: Based on upstream/downstream relationship
+            ├── Initial job: MavenJava_Build
+            └── Apply and Save OK
+
+└── Step 5: Run the Pipeline and Check Output
+        ├── Click on the trigger to run the pipeline
+        ├── click on the small black box to open the console to check if the build is success
+            Note : 
+1.	If build is success and the test project is also automatically triggered with name       
+                      “MavenJava_Test”
+2.	The pipeline is successful if it is in green color as shown ->check the console of the test project
+3.	The test project is successful and all the artifacts are archived successfully
+
+
+
+II. Maven Web Automation Steps:
+
+└── Step 1: Open Jenkins (localhost:8080)
+    ├── Click on "New Item" (left side menu)
+    
+└── Step 2: Create Freestyle Project (e.g., MavenWeb_Build)
+        ├── Enter project name (e.g., MavenWeb_Build)
+        ├── Click "OK"
+        └── Configure the project:
+            ├── Description: "Web Build demo"
+            ├── Source Code Management:
+            		└── Git repository URL: [GitMavenWeb repo URL]
+            ├── Branches to build: */Main or master
+            └── Build Steps:
+                ├── Add Build Step -> "Invoke top-level Maven targets"
+                	└── Maven version: MAVEN_HOME
+                	 └── Goals: clean
+                ├── Add Build Step -> "Invoke top-level Maven targets"
+                	└── Maven version: MAVEN_HOME
+                	└── Goals: install
+                └── Post-build Actions:
+                    ├── Add Post Build Action -> "Archive the artifacts"
+                   	 └── Files to archive: **/*
+                    ├── Add Post Build Action -> "Build other projects"
+                    	└── Projects to build: MavenWeb_Test
+                    	└── Trigger: Only if build is stable
+                    └── Apply and Save
+
+└── Step 3: Create Freestyle Project (e.g., MavenWeb_Test)
+        ├── Enter project name (e.g., MavenWeb_Test)
+        ├── Click "OK"
+        └── Configure the project:
+            ├── Description: "Test demo"
+            ├── Build Environment:
+            		└── Check: "Delete the workspace before build starts"
+            ├── Add Build Step -> "Copy artifacts from another project"
+            		└── Project name: MavenWeb_Build
+            		└── Build: Stable build only
+            		└── Artifacts to copy: **/*
+            ├── Add Build Step -> "Invoke top-level Maven targets"
+           		└── Maven version: MAVEN_HOME
+            		└── Goals: test
+            └── Post-build Actions:
+                ├── Add Post Build Action -> "Archive the artifacts"
+                	└── Files to archive: **/*
+                ├── Add Post Build Action -> "Build other projects"
+                	└── Projects to build: MavenWeb_Deploy
+                └── Apply and Save
+
+└── Step 4: Create Freestyle Project (e.g., MavenWeb_Deploy)
+        ├── Enter project name (e.g., MavenWeb_Deploy)
+        ├── Click "OK"
+        └── Configure the project:
+            ├── Description: "Web Code Deployment"
+            ├── Build Environment:
+            		└── Check: "Delete the workspace before build starts"
+            ├── Add Build Step -> "Copy artifacts from another project"
+            		└── Project name: MavenWeb_Test
+            		└── Build: Stable build only
+               	└── Artifacts to copy: **/*
+            └── Post-build Actions:
+                ├── Add Post Build Action -> "Deploy WAR/EAR to a container"
+   └── WAR/EAR File: **/*.war
+   └── Context path: Webpath
+ └── Add container -> Tomcat 9.x remote
+└── Credentials: Username: admin, Password: 1234
+── Tomcat URL: https://localhost:8085/
+                └── Apply and Save
+
+└── Step 5: Create Pipeline View for MavenWeb
+        ├── Click "+" beside "All" on the dashboard
+        ├── Enter name: MavenWeb_Pipeline
+        ├── Select "Build pipeline view"
+        └── Pipeline Flow:
+            ├── Layout: Based on upstream/downstream relationship
+            ├── Initial job: MavenWeb_Build
+            └── Apply and Save
+
+    └── Step 6: Run the Pipeline and Check Output
+        ├── Click on the trigger “RUN” to run the pipeline
+            Note: 
+1.	After Click on Run -> click on the small black box to open the console to check if the build is success
+2.	Now we see all the build has  success if it appears in green color
+        ├── Open Tomcat homepage in another tab
+        ├── Click on the "/webpath" option under the manager app
+
+# **9. Jenkins Pipeline Using Script — Ultra-Short Steps**
+
+### **1. Create a Pipeline Job**
+
+1. Jenkins → **New Item**
+2. Enter name: `pipeline_script`
+3. Select **Pipeline** → OK
+### **2. Add Pipeline Script**
+
+Pipeline → Definition: **Pipeline script**
+Paste a simple script:
 
 ```groovy
 pipeline {
-  agent any
-  tools {
-    maven 'MAVEN-HOME'
-  }
-  stages {
-    stage('git repo & clean') {
-      steps {
-        bat 'rmdir /s /q mavenjava || true'
-        bat 'git clone https://github.com/your-org/your-repo.git mavenjava'
-        bat 'mvn -f mavenjava clean'
-      }
+    agent any
+    tools{
+        maven 'MAVEN_HOME'
     }
-    stage('install') {
-      steps {
-        bat 'mvn -f mavenjava install -DskipTests=false'
-      }
+    stages {
+        stage('git repo & clean') {
+            steps {
+                bat "rmdir  /s /q xes || exit 0"
+                bat "git clone https://github.com/Eshwar0745/xes.git"
+                bat "mvn clean -f xes"
+            }
+        }
+        stage('install') {
+            steps {
+                bat "mvn install -f xes"
+            }
+        }
+        stage('test') {
+            steps {
+                bat "mvn test -f xes"
+            }
+        }
+        stage('package') {
+            steps {
+                bat "mvn package -f xes"
+            }
+        }
     }
-    stage('test') {
-      steps {
-        bat 'mvn -f mavenjava test'
-      }
-    }
-    stage('package') {
-      steps {
-        bat 'mvn -f mavenjava package'
-      }
-    }
-  }
-  post {
-    success {
-      echo "Pipeline succeeded: ${env.BUILD_NUMBER}"
-      archiveArtifacts artifacts: 'mavenjava/target/*.war', fingerprint: true
-      // Optionally trigger downstream freestyle:
-      build job: 'MavenWeb_Deploy', wait: false
-    }
-  }
 }
 ```
 
-**Notes:**
-
-* Replace `https://github...` with your repo.
-* `archiveArtifacts` stores artifacts in this pipeline build for later copy by other jobs (or you can stash).
-* To ensure downstream jobs only run on success, trigger them in `post { success { ... } }` or use conditional `when`.
-
-(Week 9 contains a similar script; I expanded it with archive and `build job:` usage.) 
-
 ---
 
-## B. Passing artifacts from pipeline to freestyle downstream (two approaches)
+### **3. Save Job**
 
-### Option 1 — Use `archiveArtifacts` + Freestyle `Copy artifacts` plugin
+Click **Apply → Save**.
 
-* In pipeline: `archiveArtifacts artifacts: 'mavenjava/target/*.war', fingerprint: true`
-* Downstream freestyle job: **Copy artifacts from another project** → project: `YourPipelineJob` → **Which build:** `Specific build` or `Latest successful build` → **Artifacts to copy**: `mavenjava/target/*.war`
 
-### Option 2 — Use `stash`/`unstash` within a multi-stage pipeline
+### **Done — Pipeline created and executed using script.**
 
-If both build/test/package are in the same pipeline, stash after package and unstash in other parallel stages:
+If you want, I can also give **trigger-based pipeline**, **Jenkinsfile version**, or **multi-stage advanced pipeline** in small format.
 
-```groovy
-stage('package') {
-  steps {
-    sh 'mvn -f mavenjava package'
-    stash includes: 'mavenjava/target/*.war', name: 'appwar'
-  }
-}
-stage('deploy') {
-  steps {
-    unstash 'appwar'
-    sh 'ls -la'
-    // docker build/run or scp to server
-  }
-}
-```
+# **10. Kubernetes Using Minikube
 
-**Recommendation:** Use `stash/unstash` when everything lives in single pipeline. Use `archiveArtifacts` + `copy artifacts` when chaining freestyle jobs.
-
----
-
-## C. Make `test` failures stop pipeline
-
-To make `mvn test` fail the pipeline (stop later stages), don’t add `|| true` and ensure you don’t wrap it in a try/catch. In declarative pipeline `error` will fail the build. Example:
-
-```groovy
-stage('test') {
-  steps {
-    bat 'mvn -f mavenjava test'
-  }
-}
-```
-
-If tests fail, pipeline fails and following stages won’t run by default.
-
-(Week 9 SBQs mention test behavior; included here.) 
-
----
-
-# WEEK 10 — Minikube & Nagios — full CLI + Jenkins integration notes
-
-(Reference: Week 10 PDF). 
-
-**Minikube quick commands**
+### **1. Start Minikube**
 
 ```bash
-# Download (Linux example)
-curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
-
-# Start minikube
 minikube start
+```
 
-# Create deployment
-kubectl create deployment mynginx --image=nginx
 
-# Scale
-kubectl scale deployment mynginx --replicas=3
 
-# Expose via port-forward
-kubectl port-forward svc/mynginx 8081:80
+---
 
-# Check pods
+### **2. Check Minikube Status**
+
+```bash
+minikube status
+```
+
+
+
+---
+
+### **3. Create Deployment (NGINX Example)**
+
+```bash
+kubectl create deployment my-nginx --image=nginx
+```
+
+
+
+---
+
+### **4. Expose Deployment (Get External Port)**
+
+```bash
+kubectl expose deployment my-nginx --type=NodePort --port=80
+```
+
+
+
+---
+
+### **5. Check Service Details (Important Port)**
+
+```bash
+kubectl get svc
+kubectl describe svc my-nginx
+```
+
+Look for **NodePort** (e.g., 30007).
+
+
+---
+
+### **6. Check Deployment + Pods**
+
+```bash
 kubectl get pods
-kubectl describe pod <pod-name>
-kubectl logs <pod-name>
+kubectl get deployment
+kubectl get nodes
 ```
 
-**Nagios Docker**
+
+
+---
+
+### **7. Open NGINX in Browser**
+
+Get service URL:
 
 ```bash
-docker pull jasonrivers/nagios:latest
-docker run --name nagiosdemo -p 8888:80 jasonrivers/nagios:latest
-# Access: http://<host>:8888
-docker logs -f nagiosdemo
-docker stop nagiosdemo
-docker rm nagiosdemo
+minikube service my-nginx
 ```
 
-**How this ties to Jenkins pipeline:** you can add stages to your pipeline to run `kubectl` commands or `docker` commands — ensure the Jenkins agent has `kubectl`/`docker` and permissions. Use `sh`/`bat` steps to execute above commands. 
+This automatically opens the browser with NGINX page.
 
----
 
-# WEEK 12 — EC2 + Docker deploy — full terminal steps and Jenkins tie-in
+# **Jenkins CI/CD Using GitHub Webhooks 
 
-(Reference: Week 12 PDF). 
-
-## A. EC2 SSH, install Docker, clone repo (commands)
+### **1. Start ngrok (Expose Jenkins)**
 
 ```bash
-# On your workstation - make key read-only
-chmod 400 yourkey.pem
-
-# SSH into instance (from AWS console copy)
-ssh -i yourkey.pem ubuntu@<EC2_PUBLIC_IP>
-
-# On the EC2 (Ubuntu) instance:
-sudo apt update -y
-sudo apt install -y docker.io git nano openjdk-17-jdk maven
-sudo usermod -aG docker ubuntu   # allow ubuntu to run docker without sudo (log out/in)
+ngrok http 8080
 ```
 
-## B. Clone and build & create Docker image
+Copy the **Forwarding URL**.
+
+
+---
+
+### **2. Create Job in Jenkins**
+
+1. Jenkins → **New Item** → Freestyle
+2. **Source Code Management → Git**
+3. Enter Git repo URL
+4. Branch: `main`
+5. **Build Triggers → GitHub hook trigger for GITScm polling**
+6. Save
+
+
+---
+
+### **3. Add Webhook in GitHub**
+
+1. Repo → **Settings → Webhooks**
+2. **Add webhook**
+3. Payload URL:
+
+```
+<NGROK_URL>/github-webhook/
+```
+
+Example:
+
+```
+https://corkier-darla-handsome.ngrok-free.dev/github-webhook/
+```
+
+4. Content type: `application/json`
+5. Add webhook
+
+
+---
+
+### **4. Trigger Build**
+
+1. Edit any file in GitHub
+2. Click **Commit changes**
+
+
+---
+
+### **5. Jenkins Auto Build**
+
+Jenkins → Job → It will show:
+**“Started by GitHub push”**
+Build executes automatically.
+
+
+
+
+ Jenkins Email Notification
+
+### **1. Generate Gmail App Password**
+
+1. Open Google Account → **Security**
+2. Enable **2-Step Verification**
+3. Go to **App Passwords**
+4. Select: App = *Other* → Name = *Jenkins*
+5. Copy the **16-digit app password**
+
+
+---
+
+### **2. Install Email Plugin**
+
+Jenkins → **Manage Jenkins → Manage Plugins**
+Search & install:
+✔ **Email Extension Plugin**
+
+
+---
+
+### **3. Configure Global Email Settings**
+
+Jenkins → **Manage Jenkins → Configure System**
+
+#### **A. E-mail Notification**
+
+Fill:
+
+```
+SMTP Server: smtp.gmail.com
+Use SMTP Auth: ✔
+Username: <your Gmail>
+Password: <16-digit app password>
+Use SSL: ✔
+Port: 465
+Reply-To: <your Gmail>
+```
+
+Click **Test configuration**.
+
+
+#### **B. Extended E-mail Notification**
+
+```
+SMTP Server: smtp.gmail.com
+Port: 465
+Use SSL: ✔
+Credentials: Add Gmail + App Password
+```
+
+
+
+---
+
+### **4. Enable Email for a Job**
+
+Job → **Configure → Post-build Actions → Editable Email Notification**
+
+Fill:
+
+```
+Project Recipient List: <email IDs>
+Triggers: Failure / Success / Always
+Content Type: text/plain or text/html
+```
+
+Save.
+
+
+
+
+
+# **AWS EC2 + Docker Deployment
+
+### **1. Login & Create Instance**
+
+1. Go to AWS Console → **EC2** → *Launch instance*
+2. Name: anything
+3. AMI: **Ubuntu 22.04**
+4. Type: **t3.micro**
+5. Key pair: **Create → RSA → .pem → Download**
+6. Security group:
+
+   * Add **SSH (22)** → My IP
+   * Add **Custom TCP (8081)** → 0.0.0.0/0
+7. Storage: keep default
+8. Launch
+
+---
+
+### **2. Get Public IP**
+
+EC2 → Instances → copy **Public IPv4**.
+
+---
+
+### **3. Connect (SSH)**
 
 ```bash
-git clone https://github.com/your-org/maven-web-java.git
-cd maven-web-java
-mvn clean package              # creates target/*.war
-# Create Dockerfile (example)
-cat > Dockerfile <<'EOF'
+chmod 400 key.pem
+ssh -i key.pem ubuntu@PUBLIC_IP
 
-FROM tomcat:9-jdk17
-COPY target/*.war /usr/local/tomcat/webapps/ROOT.war
-EOF
-# Build image
-docker build -t appimage .
-# Run container mapping host port 6060 -> container 8080
-docker run -d --name app-demo -p 6060:8080 appimage
+
+### **4. Prepare Server**
+
+```bash
+sudo -i
+apt-get update -y
+apt-get install -y git docker.io 
+maven
+systemctl enable --now docker
 ```
 
-Open `http://<EC2_PUBLIC_IP>:6060` in browser. If not accessible, add inbound rule in EC2 Security Group for port 6060 (custom TCP) and/or 8080.
-
-(Week 12 lists these steps; here they are exact commands.) 
-
 ---
 
-## C. Jenkins pipeline to deploy to EC2 (example using SSH)
+### **5. Clone Your Project**
 
-* Install **Publish Over SSH** plugin (or use `ssh` in pipeline with credentials).
-* Add SSH host in Jenkins config with IP, username `ubuntu`, key (or use credentials).
-* Pipeline stage example (uses `sshagent` or `ssh` command via `sh`):
-
-```groovy
-stage('deploy to EC2') {
-  steps {
-    sshagent (credentials: ['ec2-ssh-cred-id']) {
-      sh "scp -o StrictHostKeyChecking=no docker-compose.yml ubuntu@<EC2_PUBLIC_IP>:/home/ubuntu/"
-      sh "ssh -o StrictHostKeyChecking=no ubuntu@<EC2_PUBLIC_IP> 'cd /home/ubuntu && docker-compose up -d --build'"
-    }
-  }
-}
+```bash
+cd /home/ubuntu
+git clone <YOUR_GIT_REPO_URL>
+cd <YOUR_REPO>
 ```
 
-Alternatively use `docker` login/registry and `docker pull` on EC2.
+---
 
-(Week 12 mentions EC2 deploy process — pipeline integration added here.) 
+### **6. Build Project (only if Maven WAR/JAR)**
+
+```bash
+mvn clean package -DskipTests
+```
 
 ---
 
-# Quick summary checklist you can copy into lab manual
+### **7. Build Docker Image**
 
-1. Install Java & Maven; configure `MAVEN_HOME`. 
-2. Install and run Jenkins; configure Global Tools & Credentials. 
-3. Create `MavenJava_Build` (Freestyle): clone, `mvn clean` → `mvn install`, archive artifacts, post-build → Build other projects `MavenJava_Test`. 
-4. Create `MavenJava_Test` (Freestyle): copy artifacts from `MavenJava_Build`, `mvn test`, archive. 
-5. Create `MavenWeb_Build` / `MavenWeb_Test` / `MavenWeb_Deploy` similarly for web app; deploy WAR to Tomcat (Tomcat user must have `manager-script`).
-6. Scripted/Declarative pipeline: clone, `mvn clean install test package`, `archiveArtifacts`, optionally `build job:` downstream, or `stash/unstash`. 
-7. Minikube & Nagios commands for Week 10; Docker commands for Nagios. 
-8. EC2 steps: set key permissions, ssh, install docker/git/maven, clone, build, create Dockerfile, build & run container. 
+```bash
+docker build -t app .
+```
 
 ---
 
-If you want, I’ll now:
+### **8. Run Container**
 
-* generate **one** printable lab manual page per week with step-by-step commands and screenshots locations, or
-* produce fully-filled **Jenkinsfile** examples for *both* Windows (`bat`) and Linux (`sh`) with downstream triggers and artifact passing, or
-* produce a **single combined pipeline** that builds, tests, copies artifacts, creates Docker image, and deploys to EC2.
+(Host port 8081 → Container port 8080)
 
-Tell me which of those three you want **now** and I’ll output it immediately (full copy-paste ready).
+```bash
+docker run -d --name c1 -p 8081:8080 app
+```
+
+---
+
+### **9. Verify**
+
+```bash
+docker ps
+```
+
+---
+
+### **10. Open App in Browser**
+
+```
+http://PUBLIC_IP:8081
+```
+
+---
+
+### **11. Optional Useful Commands**
+
+```bash
+docker logs c1
+docker stop c1
+docker rm c1
+docker rmi app
+```
+
