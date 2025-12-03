@@ -1,4 +1,36 @@
-https://azeemafirdous2005.github.io/SE-LAB-PDFS/
+  https://azeemafirdous2005.github.io/SE-LAB-PDFS/
+
+1. Open Git Bash / terminal.
+2. Run: `ls -al ~/.ssh`
+3. If no key, run: `ssh-keygen -t ed25519 -C "your_email@example.com"` (press Enter to accept defaults).
+4. Start agent and add key:
+   `eval "$(ssh-agent -s)"`
+   `ssh-add ~/.ssh/id_ed25519`
+5. Copy public key: `cat ~/.ssh/id_ed25519.pub` (copy full output).
+6. In GitHub → Settings → SSH and GPG keys → New SSH key → paste the copied key → Save.
+7. Test SSH: `ssh -T git@github.com`
+8. In your repo, set remote to SSH:
+   `git remote set-url origin git@github.com:YOUR_USERNAME/YOUR_REPO.git`
+9. Check remotes: `git remote -v`
+10. Ensure Git LFS is available: if already installed run `git lfs install`; if not installed, install Git LFS for your OS, then run `git lfs install`.
+11. Fetch and restore LFS objects: `git lfs fetch --all` then `git lfs checkout`  (or `git lfs pull`).
+12. If clone failed earlier, re-clone without smudge:
+    `GIT_LFS_SKIP_SMUDGE=1 git clone git@github.com:YOUR_USERNAME/YOUR_REPO.git`
+    `cd YOUR_REPO`
+    `git lfs pull`
+    `git lfs checkout`
+13. Add, commit, push:
+    `git add .`
+    `git commit -m "your message"`
+    `git push -u origin main`  (or replace `main` with your branch)
+14. If LFS objects are missing on remote, push them from a machine that has them: `git lfs push --all origin`
+15. If using GitHub Actions, ensure checkout step includes LFS:
+
+    ```
+    - uses: actions/checkout@v3
+      with:
+        lfs: true
+    ```
 
 # ✅ **2. Exploring Git Local & Remote Commands (Multi-Folder Project)**
 
