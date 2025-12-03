@@ -354,11 +354,210 @@ to debug.
 Both appear inside `/target`.
 
 ---
-Alright Eshwar — I’ll rewrite **5, 6, 7** with **every step clearly included**, **not too short**, **not too long**, and **simple to follow** — exactly like your AWS and Jenkins ones.
 
-Let's go.
 
 ---
+
+# Quick overview of the important Maven concepts you’ll see
+
+* `groupId` — project group (like company/org).
+* `artifactId` — module name.
+* `version` — project version (e.g., `0.0.1-SNAPSHOT`).
+* `packaging` — `pom`, `jar`, `war` etc. Parent must be `pom` to contain modules.
+* `<modules>` in parent `pom` — lists child modules.
+* `<parent>` in child `pom` — makes child inherit groupId/version, plugin config, and dependencyManagement.
+* `dependency` — add one child as a dependency of another using groupId/artifactId/version.
+* `mvn -pl <module> -am` — build a module and also build modules it depends on.
+
+---
+
+# Step-by-step (Eclipse + brief CLI tips)
+
+### 1) Create parent project in Eclipse
+
+1. Open Eclipse → **File → New → Other → Maven → Maven Project** → Next.
+2. Check: **Create a simple project (skip archetype selection)** → Next.
+3. Fill values:
+
+   * `Group Id`: `KMIT`
+   * `Artifact Id`: `MultiModule`
+   * `Packaging`: **select `pom`** (important!)
+   * `Name`: `Multimodule creation`
+   * `Description`: `Sample multimodule with parent child hierarchy`
+4. Click **Finish**.
+   **Why:** packaging `pom` means this project acts as a parent/aggregator and does not produce a JAR/WAR itself.
+
+---
+
+### 2) Create child modules (module1 = JAR)
+
+1. Right-click the `MultiModule` folder → **New → Maven Module** (or New → Other → Maven → Maven Module).
+2. Choose **Create a simple project (skip archetype selection)** → Next.
+3. `ArtifactId`: `MultiModuleChild1` → Next → Finish.
+4. Eclipse creates `MultiModuleChild1` folder and its own `pom.xml`.
+   **Why:** a simple child defaults to `jar` packaging — good for libraries/core.
+
+---
+
+### 3) Create child module2 (a webapp)
+
+1. Right-click `MultiModule` → **New → Maven Module**.
+2. Search archetypes: choose `maven-archetype-webapp` (versions 1.1 or 1.5) → Next → Finish → confirm `Y` in console.
+3. Now `MultiModuleChild2` (webapp) appears with a `pom.xml` and webapp structure (`src/main/webapp`).
+   **Why:** web archetype gives standard webapp layout and `war` packaging.
+
+---
+
+### 4) Make parent aware of its modules (add `<modules>` to parent `pom.xml`)
+
+Eclipse sometimes updates parent automatically, but ensure parent `pom.xml` contains:
+
+```xml
+<project ...>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>KMIT</groupId>
+  <artifactId>MultiModule</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+  <packaging>pom</packaging>
+
+  <modules>
+    <module>MultiModuleChild1</module>
+    <module>MultiModuleChild2</module>
+  </modules>
+</project>
+```
+
+**Why:** `<modules>` is required for Maven to treat children as part of the aggregated build.
+
+---
+
+### 5) Add parent reference in child poms (so children inherit)
+
+In each child `pom.xml`, add a `<parent>` block (so you don’t repeat `groupId/version` and inherit config):
+
+```xml
+<project ...>
+  <parent>
+    <groupId>KMIT</groupId>
+    <artifactId>MultiModule</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <!-- <relativePath>../pom.xml</relativePath> optional -->
+  </parent>
+
+  <artifactId>MultimoduleChild1</artifactId>
+  <packaging>jar</packaging>
+  ...
+</project>
+```
+
+**Why:** inheritance gives consistent group/version and centralized plugin/dependency config.
+
+---
+
+### 6) Link two modules (child2 depends on child1)
+
+In `MultiModuleChild2`'s `pom.xml` add dependency:
+
+```xml
+<dependencies>
+  <dependency>
+    <groupId>KMIT</groupId>
+    <artifactId>MultiModuleChild1</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+  </dependency>
+  <!-- other deps -->
+</dependencies>
+```
+
+**Why:** This tells child2 to use classes/artifacts from child1. Because both are in the same multi-module project, Maven can build them together.
+
+**Tip:** If you use `<dependencyManagement>` in the parent, children can omit `<version>` in dependency declarations and inherit versions centrally.
+
+---
+
+### 7) Build and test (CLI & Eclipse)
+
+* From parent project root (contains parent `pom.xml`):
+
+  * `mvn clean install` → builds parent and all modules and installs them to your local repo.
+* To build only module2 and its dependencies:
+
+  * `mvn -pl MultiModuleChild2 -am clean package`
+    (`-pl` = projects list, `-am` = also make dependencies)
+* In Eclipse: Right-click parent → **Run As → Maven install** (same effect).
+
+**Why:** `install` places artifacts in your local Maven repo for other projects to consume; `package` creates the JAR/WAR.
+
+---
+
+# Example better parent with dependencyManagement and pluginManagement
+
+```xml
+<project ...>
+  <packaging>pom</packaging>
+  <groupId>KMIT</groupId>
+  <artifactId>MultiModule</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+
+  <modules>
+    <module>MultiModuleChild1</module>
+    <module>MultiModuleChild2</module>
+  </modules>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.springframework</groupId>
+        <artifactId>spring-core</artifactId>
+        <version>5.3.30</version>
+      </dependency>
+      <!-- centralize common versions -->
+    </dependencies>
+  </dependencyManagement>
+
+  <build>
+    <pluginManagement>
+      <!-- common plugin versions/config for children -->
+    </pluginManagement>
+  </build>
+</project>
+```
+
+**Why:** keeps versions consistent and reduces duplication.
+
+---
+
+# Common pitfalls & fixes
+
+* **Parent packaging not `pom`** → modules can’t be added. Always set `packaging` to `pom`.
+* **Child not listed under `<modules>`** → parent build won’t pick it up. Add it manually or recreate module under parent.
+* **Version mismatch** → ensure child dependency uses same `version` as parent or use `dependencyManagement`.
+* **Trying to add module inside JAR child** → a child with `jar` packaging shouldn’t act as aggregator; create modules under the parent instead.
+* **Eclipse m2e out of sync** → right-click project → **Maven → Update Project**.
+
+---
+
+# Handy commands you’ll use repeatedly
+
+* `mvn clean install` — build everything and install to local repo.
+* `mvn -pl <module> -am package` — build a module and modules it depends on.
+* `mvn -T 1C clean install` — parallel build (speeds up big multimodule builds).
+* `mvn dependency:tree` — see dependency graph (useful to debug transitive deps).
+
+---
+
+# Short checklist (so you don’t miss anything)
+
+1. Parent `pom` created with `packaging=pom`.
+2. Child modules created under parent folder.
+3. Parent `<modules>` lists child folders.
+4. Child `pom`s include `<parent>` block and correct `artifactId`/`packaging`.
+5. Child2 includes `<dependency>` on child1 if it needs it.
+6. `mvn clean install` from parent builds all.
+
+---
+
+
 
 # ✅ **5. Docker CLI Commands — Clear Full Steps**
 
